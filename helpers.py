@@ -8,6 +8,7 @@ from tqdm.auto import tqdm
 
 QA_MAX_ANSWER_LENGTH = 30
 
+qa_scores = {}
 
 # This function preprocesses an NLI dataset, tokenizing premises and hypotheses.
 def prepare_dataset_nli(examples, tokenizer, max_seq_length=None):
@@ -247,7 +248,7 @@ def postprocess_qa_predictions(examples,
             predictions.insert(0, {"text": "empty", "start_logit": 0.0,
                                    "end_logit": 0.0, "score": 0.0})
 
-        all_predictions[example["id"]] = predictions[0]["text"]
+        all_predictions[example["id"]] = (predictions[0]["text"], predictions[0]["score"])
     return all_predictions
 
 
@@ -270,6 +271,7 @@ class QuestionAnsweringTrainer(Trainer):
         # Temporarily disable metric computation, we will do it in the loop here.
         compute_metrics = self.compute_metrics
         self.compute_metrics = None
+        global qa_scores
         try:
             # compute the raw predictions (start_logits and end_logits)
             output = self.evaluation_loop(
@@ -289,10 +291,12 @@ class QuestionAnsweringTrainer(Trainer):
             eval_preds = postprocess_qa_predictions(eval_examples,
                                                     eval_dataset,
                                                     output.predictions)
-            formatted_predictions = [{"id": k, "prediction_text": v}
+            formatted_predictions = [{"id": k, "prediction_text": v[0]}
                                      for k, v in eval_preds.items()]
             references = [{"id": ex["id"], "answers": ex['answers']}
                           for ex in eval_examples]
+            for k, v in eval_preds.items():
+                qa_scores[k] = float(v[1])
 
             # compute the metrics according to the predictions and references
             metrics = self.compute_metrics(

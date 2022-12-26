@@ -5,9 +5,23 @@ from helpers import prepare_dataset_nli, prepare_train_dataset_qa, \
     prepare_validation_dataset_qa, QuestionAnsweringTrainer, compute_accuracy
 import os
 import json
+import helpers
 
 NUM_PREPROCESSING_WORKERS = 2
 
+def best_qa_scores(scores):
+    best_scores = {}
+    for k, v in scores.items():
+        k2 = k.split('-')[0]
+        if k2 in best_scores:
+            if v > best_scores[k2][1]:
+                best_scores[k2] = (k, v)
+        else:
+            best_scores[k2] = (k, v)
+    scores = {}
+    for k, v in best_scores.items():
+        scores[v[0]] = v[1]
+    return scores
 
 def main():
     argp = HfArgumentParser(TrainingArguments)
@@ -53,7 +67,7 @@ def main():
     if args.dataset.endswith('.json') or args.dataset.endswith('.jsonl'):
         dataset_id = None
         # Load from local json/jsonl file
-        dataset = datasets.load_dataset('json', data_files=args.dataset)
+        dataset = datasets.load_dataset('json', data_files=args.dataset, field='data')
         # By default, the "json" dataset loader places all examples in the train split,
         # so if we want to use a jsonl file for evaluation we need to get the "train" split
         # from the loaded dataset
@@ -179,6 +193,11 @@ def main():
         print(results)
 
         os.makedirs(training_args.output_dir, exist_ok=True)
+
+        if args.task == 'qa':
+            qa_scores = best_qa_scores(helpers.qa_scores)
+            with open(os.path.join(training_args.output_dir, 'eval_scores.json'), encoding='utf-8', mode='w') as f:
+                json.dump(qa_scores, f, indent=2)
 
         with open(os.path.join(training_args.output_dir, 'eval_metrics.json'), encoding='utf-8', mode='w') as f:
             json.dump(results, f)
