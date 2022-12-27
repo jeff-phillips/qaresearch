@@ -1,16 +1,20 @@
 // Build training and evaluation data sets for QA research.
+// TODO: Get rid of magic numbers in dataset partitions.
 
-use ::function_name::named;
-use rand::Rng;
-use serde::Serialize;
-use serde_json::{Deserializer, Value};
 use std::collections::HashMap;
-use std::env;
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 use std::rc::Rc;
+use ::function_name::named;
+use clap::{arg, ColorChoice, Command};
+use rand::Rng;
+use serde::Serialize;
+use serde_json::{Deserializer, Value};
+
+// Program version.
+const VERSION: &str = "0.1.0";
 
 // These are possible answers to a question.  Each answer includes a substring
 // from the reading passage (context) and its starting offset in the passage.
@@ -41,31 +45,68 @@ struct Output {
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    if args.len() < 2 || args.len() > 5 {
-        eprintln!(
-            "Usage: {} FILE [APPEND-FILE PREPEND-FILE TWOWAY-FILE]",
-            args[0]
-        );
-        eprintln!(
-            "Example: {} train-convHighConf-pretty.json train-appended.json",
-            args[0]
-        );
-        std::process::exit(1);
-    }
+    let mut cmdline = cli();
+    let matches = cmdline.get_matches_mut();
+    let subcmd = matches.subcommand_name().unwrap();
+    let cmdname = cmdline.get_name();
 
-    let raw_examples = read_raw_examples(&args[1]).unwrap();
+    match matches.subcommand() {
+        Some(("train", sub_matches)) => {
+            let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
+            let raw_examples = read_raw_examples(input_file).unwrap();
 
-    if args.len() > 2 {
-        let append_examples = get_append_examples(&raw_examples);
-        write_training_examples(append_examples, &args[2]).unwrap();
-        if args.len() > 3 {
+            let input_file_tokens = input_file.rsplit_once(".").unwrap();
+            let input_stem = input_file_tokens.0.to_string();
+            let append_path = input_stem.to_owned() + "-append.json";
+            let append_examples = get_append_examples(&raw_examples);
+            write_training_examples(append_examples, append_path).unwrap();
+
+            let twoway_path = input_stem + "-twoway.json";
             let twoway_examples = get_twoway_examples(&raw_examples);
-            write_training_examples(twoway_examples, &args[3]).unwrap();
+            write_training_examples(twoway_examples, twoway_path).unwrap();
+        }
+        Some(("eval", sub_matches)) => {
+            let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
+            let id_file = sub_matches.get_one::<String>("IDFILE").expect("required");
+            println!("evaluation: input file: {}, id file: {}", input_file, id_file);
+        }
+        Some(("version", _)) => {
+            println!("{} version {}", cmdname, VERSION);
+        }
+        _ => {
+            println!("{}: '{}' is not a {} command. See '{} --help'.",
+                cmdname, subcmd, cmdname, cmdname);
         }
     }
+}
 
-    // println!("{:?} {:?}", raw_examples.len(), append_examples.len());
+fn cli() -> Command {
+    Command::new("qabuild")
+        .about("Build adversarial training and evaluation SQuAD datasets")
+        .subcommand_required(true)
+        .arg_required_else_help(true)
+        .allow_external_subcommands(true)
+        .color(ColorChoice::Never)
+        .subcommand(
+            Command::new("train")
+                .about("Generate adversarial training data")
+                .arg(arg!(<INFILE> "Input filename, e.g., train-convHighConf.json")
+                    .required(true))
+                .arg_required_else_help(true)
+        )
+        .subcommand(
+            Command::new("eval")
+                .about("Generate adversarial evaluation data")
+                .arg(arg!(<INFILE> "Input filename, e.g., AddSent.json")
+                    .required(true))
+                .arg(arg!(<IDFILE> "Filename of IDs and F1 scores")
+                    .required(true))
+                .arg_required_else_help(true)
+        )
+        .subcommand(
+            Command::new("version")
+                .about("Report the program version")
+        )
 }
 
 #[named]
