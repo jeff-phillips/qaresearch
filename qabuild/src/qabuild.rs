@@ -51,12 +51,17 @@ fn main() {
     let cmdname = cmdline.get_name();
 
     match matches.subcommand() {
-        Some(("train", sub_matches)) => {
+         Some(("train", sub_matches)) => {
             let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
             let raw_examples = read_raw_examples(input_file).unwrap();
 
             let input_file_tokens = input_file.rsplit_once(".").unwrap();
             let input_stem = input_file_tokens.0.to_string();
+
+            let clean_path = input_stem.to_owned() + "-clean.json";
+            let clean_examples = get_clean_examples(&raw_examples);
+            write_training_examples(clean_examples, clean_path).unwrap();
+
             let append_path = input_stem.to_owned() + "-append.json";
             let append_examples = get_append_examples(&raw_examples);
             write_training_examples(append_examples, append_path).unwrap();
@@ -64,6 +69,16 @@ fn main() {
             let twoway_path = input_stem + "-twoway.json";
             let twoway_examples = get_twoway_examples(&raw_examples);
             write_training_examples(twoway_examples, twoway_path).unwrap();
+        }
+        Some(("challenge", sub_matches)) => {
+            let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
+            let raw_examples = read_raw_examples(input_file).unwrap();
+
+            let input_file_tokens = input_file.rsplit_once(".").unwrap();
+            let input_stem = input_file_tokens.0.to_string();
+            let challenge_path = input_stem.to_owned() + "Challenge.json";
+            let challenge_examples = get_challenge_examples(&raw_examples);
+            write_training_examples(challenge_examples, challenge_path).unwrap();
         }
         Some(("eval", sub_matches)) => {
             let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
@@ -95,6 +110,13 @@ fn cli() -> Command {
                 .arg_required_else_help(true)
         )
         .subcommand(
+            Command::new("challenge")
+                .about("Extract AddSent challenge examples")
+                .arg(arg!(<INFILE> "Input filename, e.g. AddSent.json")
+                    .required(true))
+                .arg_required_else_help(true)
+        )
+        .subcommand(
             Command::new("eval")
                 .about("Generate adversarial evaluation data")
                 .arg(arg!(<INFILE> "Input filename, e.g., AddSent.json")
@@ -107,6 +129,27 @@ fn cli() -> Command {
             Command::new("version")
                 .about("Report the program version")
         )
+}
+
+#[named]
+fn get_clean_examples(raw_examples: &HashMap<String, Example>) -> HashMap<String, Example> {
+    let mut clean_examples = HashMap::<String, Example>::new();
+    let mut clean_example_count: i32 = 0;
+
+    for (k, v) in raw_examples {
+        if !k.contains('-') {
+            clean_examples.insert(k.clone(), v.clone());
+            clean_example_count += 1;
+        }
+    }
+
+    println!(
+        "{}: clean_examples: {}",
+        function_name!(),
+        clean_example_count
+    );
+
+    clean_examples
 }
 
 #[named]
@@ -216,6 +259,32 @@ fn get_twoway_examples(raw_examples: &HashMap<String, Example>) -> HashMap<Strin
     );
 
     twoway_examples
+}
+
+#[named]
+fn get_challenge_examples(raw_examples: &HashMap<String, Example>) -> HashMap<String, Example> {
+    let mut challenge_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
+
+    let mut clean_count = 0;
+    let mut challenge_count = 0;
+
+    for (k, v) in raw_examples {
+        if !k.contains('-') {
+            clean_count += 1;
+        } else {
+            challenge_examples.insert(k.clone(), v.clone());
+            challenge_count += 1;
+        }
+    }
+
+    println!(
+        "{}: clean_examples: {}, appended_examples: {}",
+        function_name!(),
+        clean_count,
+        challenge_count
+    );
+
+    challenge_examples
 }
 
 fn read_raw_examples<P: AsRef<Path>>(path: P) -> Result<HashMap<String, Example>, Box<dyn Error>> {

@@ -23,6 +23,20 @@ def best_qa_scores(scores):
         scores[v[0]] = v[1]
     return scores
 
+def worst_qa_scores(scores):
+    worst_scores = {}
+    for k, v in scores.items():
+        k2 = k.split('-')[0]
+        if k2 in worst_scores:
+            if v < worst_scores[k2][1]:
+                worst_scores[k2] = (k, v)
+        else:
+            worst_scores[k2] = (k, v)
+    scores = {}
+    for k, v in worst_scores.items():
+        scores[v[0]] = v[1]
+    return scores
+
 def main():
     argp = HfArgumentParser(TrainingArguments)
     # The HfArgumentParser object collects command-line arguments into an object (and provides default values for unspecified arguments).
@@ -195,7 +209,8 @@ def main():
         os.makedirs(training_args.output_dir, exist_ok=True)
 
         if args.task == 'qa':
-            qa_scores = best_qa_scores(helpers.qa_scores)
+            # qa_scores = best_qa_scores(helpers.qa_scores)
+            qa_scores = worst_qa_scores(helpers.qa_scores)
             with open(os.path.join(training_args.output_dir, 'eval_scores.json'), encoding='utf-8', mode='w') as f:
                 json.dump(qa_scores, f, indent=2)
 
