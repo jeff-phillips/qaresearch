@@ -1,7 +1,7 @@
 // Build training and evaluation data sets for QA research.
 // TODO: Get rid of magic numbers in dataset partitions.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -82,7 +82,22 @@ fn main() {
         }
         Some(("eval", sub_matches)) => {
             let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
+            let raw_examples = read_raw_examples(input_file).unwrap();
+
             let id_file = sub_matches.get_one::<String>("IDFILE").expect("required");
+            let challenge_ids = get_challenge_ids(id_file).unwrap();
+
+            let input_file_tokens = input_file.rsplit_once(".").unwrap();
+            let input_stem = input_file_tokens.0.to_string();
+
+            let clean_path = input_stem.to_owned() + "Clean.json";
+            let clean_examples = get_clean_examples(&raw_examples);
+            write_training_examples(clean_examples, clean_path).unwrap();
+
+            let append_path = input_stem.to_owned() + "Append.json";
+            let append_examples = get_append_eval_examples(&raw_examples, &challenge_ids);
+            write_training_examples(append_examples, append_path).unwrap();
+
             println!("evaluation: input file: {}, id file: {}", input_file, id_file);
         }
         Some(("version", _)) => {
@@ -195,6 +210,27 @@ fn get_append_examples(raw_examples: &HashMap<String, Example>) -> HashMap<Strin
 }
 
 #[named]
+fn get_append_eval_examples(raw_examples: &HashMap<String, Example>, challenge_ids: &HashSet<String>) -> HashMap<String, Example> {
+    let mut append_eval_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
+    let mut append_eval_examples_count = 0;
+
+    for (k, v) in raw_examples {
+        if challenge_ids.contains(k) {
+            append_eval_examples.insert(k.to_string(), v.clone());
+            append_eval_examples_count += 1;
+        }
+    }
+
+    println!(
+        "{}: append_eval_examples: {}",
+        function_name!(),
+        append_eval_examples_count
+    );
+
+    append_eval_examples
+}
+
+#[named]
 fn get_twoway_examples(raw_examples: &HashMap<String, Example>) -> HashMap<String, Example> {
     let mut twoway_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
 
@@ -285,6 +321,23 @@ fn get_challenge_examples(raw_examples: &HashMap<String, Example>) -> HashMap<St
     );
 
     challenge_examples
+}
+
+fn get_challenge_ids<P: AsRef<Path>>(path: P) -> Result<HashSet<String>, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut stream = Deserializer::from_reader(reader).into_iter::<Value>();
+
+    let value = stream.next().unwrap();
+    let binding = value?;
+    let data = binding.as_object().unwrap();
+
+    let mut challenge_ids = HashSet::<String>::new();
+    for (k, _) in data {
+        _ = challenge_ids.insert(k.clone());
+    }
+
+    Ok(challenge_ids)
 }
 
 fn read_raw_examples<P: AsRef<Path>>(path: P) -> Result<HashMap<String, Example>, Box<dyn Error>> {
