@@ -60,15 +60,15 @@ fn main() {
 
             let clean_path = input_stem.to_owned() + "-clean.json";
             let clean_examples = get_clean_examples(&raw_examples);
-            write_training_examples(clean_examples, clean_path).unwrap();
+            write_reformatted_examples(clean_examples, clean_path).unwrap();
 
             let append_path = input_stem.to_owned() + "-append.json";
             let append_examples = get_append_examples(&raw_examples);
-            write_training_examples(append_examples, append_path).unwrap();
+            write_reformatted_examples(append_examples, append_path).unwrap();
 
             let twoway_path = input_stem + "-twoway.json";
             let twoway_examples = get_twoway_examples(&raw_examples);
-            write_training_examples(twoway_examples, twoway_path).unwrap();
+            write_reformatted_examples(twoway_examples, twoway_path).unwrap();
         }
         Some(("challenge", sub_matches)) => {
             let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
@@ -78,7 +78,7 @@ fn main() {
             let input_stem = input_file_tokens.0.to_string();
             let challenge_path = input_stem.to_owned() + "Challenge.json";
             let challenge_examples = get_challenge_examples(&raw_examples);
-            write_training_examples(challenge_examples, challenge_path).unwrap();
+            write_reformatted_examples(challenge_examples, challenge_path).unwrap();
         }
         Some(("eval", sub_matches)) => {
             let input_file = sub_matches.get_one::<String>("INFILE").expect("required");
@@ -92,11 +92,19 @@ fn main() {
 
             let clean_path = input_stem.to_owned() + "Clean.json";
             let clean_examples = get_clean_examples(&raw_examples);
-            write_training_examples(clean_examples, clean_path).unwrap();
+            write_reformatted_examples(clean_examples, clean_path).unwrap();
 
             let append_path = input_stem.to_owned() + "Append.json";
             let append_examples = get_append_eval_examples(&raw_examples, &challenge_ids);
-            write_training_examples(append_examples, append_path).unwrap();
+            write_reformatted_examples(append_examples, append_path).unwrap();
+
+            let prepend_path = input_stem.to_owned() + "Prepend.json";
+            let prepend_examples = get_prepend_eval_examples(&raw_examples, &challenge_ids);
+            write_reformatted_examples(prepend_examples, prepend_path).unwrap();
+
+            let twoway_path = input_stem.to_owned() + "TwoWay.json";
+            let twoway_examples = get_twoway_eval_examples(&raw_examples, &challenge_ids);
+            write_reformatted_examples(twoway_examples, twoway_path).unwrap();
 
             println!("evaluation: input file: {}, id file: {}", input_file, id_file);
         }
@@ -298,6 +306,97 @@ fn get_twoway_examples(raw_examples: &HashMap<String, Example>) -> HashMap<Strin
 }
 
 #[named]
+fn get_prepend_eval_examples(raw_examples: &HashMap<String, Example>, challenge_ids: &HashSet<String>) -> HashMap<String, Example> {
+    let mut prepend_eval_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
+    let mut prepend_eval_examples_count = 0;
+
+    for (k, v) in raw_examples {
+        if challenge_ids.contains(k) {
+            let mut tokens = k.split('-');
+            let baseid = tokens.next().unwrap();
+
+            if raw_examples.contains_key(baseid) {
+                // Add a prepended example.
+                let v2 = &raw_examples[baseid];
+                let mut last_sentence = v.context[v2.context.len()..].trim().to_string();
+                last_sentence += " ";
+                let start_offset = last_sentence.len();
+                let mut answers = v2.answers.clone();
+                for start_pos in &mut answers.answer_start {
+                    *start_pos += start_offset as i64;
+                }
+                prepend_eval_examples.insert(
+                    k.to_string(),
+                    Example {
+                        title: v2.title.clone(),
+                        context: Rc::<String>::new(last_sentence + &v2.context),
+                        question: v2.question.clone(),
+                        answers: answers,
+                    },
+                );
+                prepend_eval_examples_count += 1;
+            }
+        }
+    }
+
+    println!(
+        "{}: prepend_eval_examples: {}",
+        function_name!(),
+        prepend_eval_examples_count
+    );
+
+    prepend_eval_examples
+}
+
+#[named]
+fn get_twoway_eval_examples(raw_examples: &HashMap<String, Example>, challenge_ids: &HashSet<String>) -> HashMap<String, Example> {
+    let mut twoway_eval_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
+    let mut twoway_eval_examples_count = 0;
+
+    for (k, v) in raw_examples {
+        if challenge_ids.contains(k) {
+            let mut tokens = k.split('-');
+            let baseid = tokens.next().unwrap();
+
+            if twoway_eval_examples_count % 2 > 0 {
+                if raw_examples.contains_key(baseid) {
+                    // Add a prepended example.
+                    let v2 = &raw_examples[baseid];
+                    let mut last_sentence = v.context[v2.context.len()..].trim().to_string();
+                    last_sentence += " ";
+                    let start_offset = last_sentence.len();
+                    let mut answers = v2.answers.clone();
+                    for start_pos in &mut answers.answer_start {
+                        *start_pos += start_offset as i64;
+                    }
+                    twoway_eval_examples.insert(
+                        k.to_string(),
+                        Example {
+                            title: v2.title.clone(),
+                            context: Rc::<String>::new(last_sentence + &v2.context),
+                            question: v2.question.clone(),
+                            answers: answers,
+                        },
+                    );
+                    twoway_eval_examples_count += 1;
+                }
+            } else {
+                twoway_eval_examples.insert(k.to_string(), v.clone());
+                twoway_eval_examples_count += 1;
+            }
+        }
+    }
+
+    println!(
+        "{}: twoway_eval_examples: {}",
+        function_name!(),
+        twoway_eval_examples_count
+    );
+
+    twoway_eval_examples
+}
+
+#[named]
 fn get_challenge_examples(raw_examples: &HashMap<String, Example>) -> HashMap<String, Example> {
     let mut challenge_examples: HashMap<String, Example> = HashMap::<String, Example>::new();
 
@@ -390,7 +489,7 @@ fn read_raw_examples<P: AsRef<Path>>(path: P) -> Result<HashMap<String, Example>
     Ok(raw_examples)
 }
 
-fn write_training_examples<P: AsRef<Path>>(
+fn write_reformatted_examples<P: AsRef<Path>>(
     examples: HashMap<String, Example>,
     path: P,
 ) -> Result<(), Box<dyn Error>> {
