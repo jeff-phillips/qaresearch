@@ -209,8 +209,8 @@ def main():
         os.makedirs(training_args.output_dir, exist_ok=True)
 
         if args.task == 'qa':
-            # qa_scores = best_qa_scores(helpers.qa_scores)
-            qa_scores = worst_qa_scores(helpers.qa_scores)
+            qa_scores = best_qa_scores(helpers.qa_scores)
+            # qa_scores = worst_qa_scores(helpers.qa_scores)
             with open(os.path.join(training_args.output_dir, 'eval_scores.json'), encoding='utf-8', mode='w') as f:
                 json.dump(qa_scores, f, indent=2)
 

@@ -134,15 +134,15 @@ fn cli() -> Command {
         )
         .subcommand(
             Command::new("challenge")
-                .about("Extract AddSent challenge examples")
-                .arg(arg!(<INFILE> "Input filename, e.g. AddSent.json")
+                .about("Extract AddSentMod challenge examples")
+                .arg(arg!(<INFILE> "Input filename, e.g. AddSentMod.json")
                     .required(true))
                 .arg_required_else_help(true)
         )
         .subcommand(
             Command::new("eval")
                 .about("Generate adversarial evaluation data")
-                .arg(arg!(<INFILE> "Input filename, e.g., AddSent.json")
+                .arg(arg!(<INFILE> "Input filename, e.g., AddSentMod.json")
                     .required(true))
                 .arg(arg!(<IDFILE> "Filename of IDs and F1 scores")
                     .required(true))
